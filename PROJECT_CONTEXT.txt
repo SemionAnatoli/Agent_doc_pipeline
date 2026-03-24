@@ -1,0 +1,521 @@
+================================================================================
+КОНТЕКСТ ПРОЕКТА «АГЕНТ» (КОНВЕЙЕР ДОКУМЕНТОВ) — ПОЛНЫЙ КОНСПЕКТ ДЛЯ НОВОГО ЧАТА
+================================================================================
+Назначение файла:
+  Передать следующему ассистенту (в другом окне Cursor / New Agent) актуальное
+  состояние проекта и историю решений. Текст преамбулы и разделов до «11. ЖУРНАЛ» — «снимок
+  сейчас»: не описывать уже удалённые или заменённые части проекта.
+  Раздел 11 — хроника шагов (дописывать новые записи; старые не стирать без просьбы
+  пользователя; при удалении фичи в новой записи указать, что убрано и что в теле конспекта
+  исправлено).
+
+КРИТИЧЕСКОЕ ПРАВИЛО ДЛЯ ЛЮБОГО АССИСТЕНТА, КОТОРЫЙ МЕНЯЕТ ПРОЕКТ:
+  После любого содержательного шага (добавление, изменение, УДАЛЕНИЕ в коде или
+  конфиге) ОБЯЗАТЕЛЬНО:
+  (1) привести соответствующие фрагменты этого файла (разделы 1–10 и начало документа,
+      всё до раздела «ЖУРНАЛ»)
+      в соответствие с репозиторием — убрать устаревшее, обновить описание;
+  (2) дополнить раздел «11. ЖУРНАЛ РАЗРАБОТКИ»: дата, что сделано, пути файлов,
+      при необходимости — какие абзацы конспекта переписаны или удалены.
+  Не ждите напоминания от пользователя. Правило Cursor: .cursor/rules/project-context-journal.mdc
+
+Рекомендация пользователю:
+  В новом чате напишите: «Прочитай PROJECT_CONTEXT.txt в корне проекта и продолжай»
+  или прикрепите файл через @.
+  В проекте включено правило Cursor: .cursor/rules/project-context-journal.mdc (alwaysApply),
+  чтобы агент поддерживал конспект в актуальном виде и дополнял журнал без отдельной просьбы.
+
+Кодировка: UTF-8.
+
+================================================================================
+1. ИСХОДНАЯ ЦЕЛЬ ПОЛЬЗОВАТЕЛЯ
+================================================================================
+- Собрать интересный портфельный проект на тему мультиагентной автоматизации
+  (конвейер документов) для демонстрации работодателю на позицию инженера по
+  автоматизации.
+- Выбран вариант №2: «офисный конвейер документов» — входящие файлы/письма →
+  извлечение сущностей → сверка с CRM/таблицей → шаблон → маршрутизация с
+  human-in-the-loop при необходимости. Реализовано: Intake, Extract (эвристики по тексту
+  PDF), Match (локальная CRM-сверка по ИНН), Route (правила маршрутизации),
+  Template (готовый текст документа + email-отправка), веб
+  (цепочка intake → extract → match → route → template/send).
+  Не реализовано: OCR, LLM, внешняя CRM/БД, оркестратор workflow/очередь, HITL.
+
+================================================================================
+2. АРХИТЕКТУРНЫЕ РЕШЕНИЯ (СОГЛАСОВАННЫЕ В ДИАЛОГЕ)
+================================================================================
+2.1. Структура репозитория (логика разделения)
+  - core/     — общие настройки, схемы данных (Pydantic), без привязки к «личности» агента.
+  - tools/    — внешние действия и утилиты: хранение файлов, разбор PDF и т.д.
+  - agents/   — подпакет на каждого агента: intake, extract, match, route, template.
+  - web/      — только HTTP/UI и вызов уже существующей логики агентов (отдельно,
+                чтобы не смешивать доменную логику и интерфейс).
+  - orchestration/ (папка задумывалась для оркестратора цепочки) — пока не создана;
+    в UI: один POST /api/intake (multipart file) всегда возвращает Intake + Extract в одном JSON;
+    опционально отдельно POST /api/extract по job_id.
+
+2.2. Имя и роль первого агента
+  - Пакет: agents/intake
+  - Функция входа: run_intake(path: Path) -> IngestionResult
+  - Смысловое имя: агент приёма (Intake) — НЕ извлекает суммы/ИНН; готовит задачу
+    для следующих агентов.
+
+2.3. Второй агент — Extract (извлечение)
+  - Пакет: agents/extract
+  - Вход: IngestionResult (или только job_id через intake.json) при успешном Intake.
+  - run_extract / run_extract_by_job_id -> ExtractionResult; текст только из PDF без OCR;
+    растр и «пустой» PDF -> status skipped_ocr. Эвристики: ИНН 10/12 цифр, даты ДД.ММ.ГГГГ,
+    суммы с , / . и «руб». Результат пишется в data/jobs/{job_id}/extraction.json.
+
+2.4. Третий агент — Match (CRM-сверка)
+  - Пакет: agents/match
+  - Вход: ExtractionResult (или только job_id через extraction.json) после успешного Extract.
+  - run_match / run_match_by_job_id -> MatchingResult; сверка по кандидатам ИНН с локальным
+    реестром CRM (tools/crm_registry.py). Результат пишется в data/jobs/{job_id}/matching.json.
+
+2.5. Четвёртый агент — Route (маршрутизация решения)
+  - Пакет: agents/route
+  - Вход: extraction.json + matching.json (через job_id).
+  - run_route_by_job_id -> RoutingResult; rule-based decision:
+    ready_for_template / review_required / rejected / failed.
+  - Пишет data/jobs/{job_id}/routing.json.
+
+2.6. Пятый агент — Template (подготовка документа + отправка email)
+  - Пакет: agents/template
+  - Вход: extraction.json + matching.json + routing.json (через job_id).
+  - run_template_by_job_id -> TemplateResult; при route ready_for_template формирует
+    data/jobs/{job_id}/prepared_document.txt и manifest template.json.
+  - send_template_by_job_id(job_id, recipient_email) -> EmailSendResult; отправка
+    prepared_document.txt на email через SMTP (переменные окружения SMTP_*), журнал
+    отправки в data/jobs/{job_id}/email_send.json.
+
+================================================================================
+3. АГЕНТ INTAKE — ЗАДАЧИ И ПОВЕДЕНИЕ
+================================================================================
+3.1. Ответственность
+  - Принять путь к файлу; проверить существование, расширение, размер.
+  - Допустимые расширения: .pdf, .png, .jpg, .jpeg (см. core/config.py).
+  - Максимальный размер: 25 МБ.
+  - При успехе: сгенерировать job_id (UUID), скопировать файл в
+    data/jobs/{job_id}/original.<ext> (см. tools/storage.py).
+  - Грубая классификация по ИМЕНИ файла (эвристики): invoice / contract / other
+    (см. agents/intake/agent.py, маркеры на русском и английском).
+  - PDF: tools/pdf_inspect.py — число страниц; выборка текста с первых N страниц
+    (PDF_SAMPLE_PAGES); если символов мало — needs_ocr = true (скан).
+  - Растровые изображения: page_count = 1, needs_ocr = true.
+  - При ошибке чтения PDF — status rejected, rejection_reason pdf_read_error.
+  - При отклонении на ранней стадии файл в data/jobs не копируется (job_id всё равно
+    генерируется для трассировки в ответе).
+
+3.2. Модели данных (core/schemas.py)
+  - DocumentKind: invoice | contract | other | unknown
+  - IngestionStatus: accepted | rejected
+  - IngestionResult: job_id, status, original_filename, stored_path, document_kind,
+    kind_confidence, needs_ocr, page_count, rejection_reason, notes
+  - Модели Extract (ExtractionResult и др.) — см. п. 4.2.
+  - Модели Match (MatchingResult и др.) — см. п. 4.6.
+  - Модели Route (RoutingResult и др.) — см. п. 4.7.
+  - Модели Template/Email (TemplateResult, EmailSendResult и др.) — см. п. 4.8.
+
+3.3. CLI
+  - Запуск из корня проекта: python -m agents.intake <путь_к_файлу>
+  - Вывод: JSON в stdout; код выхода 0 при accepted, 1 при rejected.
+
+3.4. Манифест intake.json
+  - При status accepted в каталоге data/jobs/{job_id}/ создаётся файл intake.json
+    (полный JSON IngestionResult) для агента Extract и API /api/extract.
+
+================================================================================
+4. АГЕНТ EXTRACT — ИЗВЛЕЧЕНИЕ СУЩНОСТЕЙ
+================================================================================
+4.1. Назначение
+  - Второй шаг пайплайна: по сохранённому файлу и данным Intake извлечь текст из PDF
+    (pypdf, лимиты MAX_EXTRACT_PAGES / MAX_EXTRACT_CHARS в core/config.py) и найти
+    кандидаты сущностей regex-ами (tools/entity_patterns.py): ИНН 10/12 цифр, даты
+    ДД.ММ.ГГГГ, денежные строки с , / . и опционально «руб» / ₽.
+  - Растровые изображения: без Tesseract — сразу status skipped_ocr.
+  - Если символов текста < MIN_TEXT_CHARS_FOR_EXTRACTION — skipped_ocr (скан/пустой слой).
+
+4.2. Модели (core/schemas.py)
+  - ExtractionStatus: ok | skipped_ocr | failed
+  - ExtractedEntities: inn_candidates, date_candidates, money_candidates (списки строк)
+  - ExtractionResult: job_id, status, document_kind, text_char_count, text_preview,
+    entities, rejection_reason, notes
+
+4.3. Файлы кода
+  - agents/extract/agent.py — run_extract(IngestionResult), run_extract_by_job_id(job_id);
+    при успехе ok пишет data/jobs/{job_id}/extraction.json.
+  - tools/pdf_text.py — extract_pdf_plain_text
+  - tools/job_manifest.py — load_intake_result(job_id) из intake.json
+
+4.4. CLI
+  - python -m agents.extract <job_id> — читает intake.json в каталоге job; stdout JSON;
+    код 0 только при status ok.
+
+4.5. Проверка связки Intake + Extract (скрипт)
+  - scripts/test_two_agents.py — из корня проекта: python scripts/test_two_agents.py
+    Пишет минимальный PDF в data/_test_run/schet_demo.pdf, вызывает run_intake и
+    run_extract_by_job_id; код выхода 0 при успехе. Без доп. pip-пакетов.
+  - Для ручного теста с «богатым» набором сущностей используется
+    data/_test_run/schet_rich_demo.pdf (несколько INN, даты и суммы в разных форматах).
+
+4.6. Третий агент Match (CRM-сверка по ИНН)
+  - Модели (core/schemas.py):
+    - MatchStatus: ok | no_match | skipped | failed
+    - CRMMatchItem: inn, company_name, account_manager, segment, source
+    - MatchingResult: job_id, status, checked_inn, matches, rejection_reason, notes
+  - Логика:
+    - Если Extract не ok -> status skipped (rejection_reason extract_not_ok)
+    - Если entities отсутствуют -> status skipped (entities_missing)
+    - По списку INN-кандидатов после нормализации (только 10/12 цифр) ищет совпадения в
+      локальном CRM-реестре tools/crm_registry.py
+    - При совпадениях: status ok; без совпадений: status no_match
+    - Результат пишется в data/jobs/{job_id}/matching.json
+  - CLI:
+    - python -m agents.match <job_id> — читает extraction.json и запускает сверку;
+      код 0 только при status ok.
+  - Проверка цепочки Intake + Extract + Match:
+    - scripts/test_three_agents.py — из корня проекта: python scripts/test_three_agents.py
+      (минимальный PDF -> intake -> extract -> match).
+
+4.7. Четвёртый агент Route (финальная маршрутизация)
+  - Модели (core/schemas.py):
+    - RouteStatus: ready_for_template | review_required | rejected | failed
+    - RoutingResult: job_id, status, queue, priority, reasons, next_actions, rejection_reason, notes
+  - Логика (agents/route/agent.py):
+    - Если Extract не ok -> review_required, queue=ocr_review, priority=high
+    - Если Match ok -> ready_for_template, queue=templating
+    - Если Match no_match -> review_required, queue=crm_enrichment
+    - Если Match skipped -> review_required, queue=doc_control
+    - Иначе -> failed
+  - Выход:
+    - data/jobs/{job_id}/routing.json
+  - CLI:
+    - python -m agents.route <job_id> — читает extraction.json + matching.json и строит routing.
+  - Проверка цепочки Intake + Extract + Match + Route:
+    - scripts/test_four_agents.py — из корня проекта: python scripts/test_four_agents.py.
+
+4.8. Пятый агент Template (готовый документ и email-отправка)
+  - Модели (core/schemas.py):
+    - TemplateStatus: ready | skipped | failed
+    - TemplateResult: job_id, status, template_path, rejection_reason, notes
+    - EmailSendStatus: sent | failed
+    - EmailSendResult: job_id, status, recipient_email, subject, rejection_reason, notes
+  - Логика (agents/template/agent.py):
+    - Если route.status != ready_for_template -> template status skipped
+    - Если match.status != ok -> template status skipped
+    - Иначе формирует prepared_document.txt (контрагент, ИНН, даты/суммы, route-решение)
+      и пишет template.json.
+    - Отправка email через tools/email_sender.py (SMTP_HOST, SMTP_PORT, SMTP_USER,
+      SMTP_PASSWORD, SMTP_FROM, SMTP_USE_TLS), результат в email_send.json.
+  - CLI:
+    - python -m agents.template <job_id> — генерация prepared_document.txt.
+  - Проверка цепочки Intake + Extract + Match + Route + Template:
+    - scripts/test_five_agents.py — из корня проекта: python scripts/test_five_agents.py.
+
+================================================================================
+5. ВЕБ-ИНТЕРФЕЙС (ПАПКА web/)
+================================================================================
+5.1. Технологии
+  - FastAPI, uvicorn, python-multipart (загрузка файлов).
+
+5.2. Файлы
+  - web/app.py — приложение FastAPI:
+      GET  /        — отдаёт web/static/index.html (форма загрузки), Cache-Control: no-store (свежий JS).
+      POST /api/intake — multipart: только file. После Intake при status accepted вызывается run_extract(ingestion)
+                         в памяти (без повторного чтения intake.json); ответ всегда {"intake": ..., "extract": ... | null}.
+                         При rejected extract = null. Исключения внутри Extract сериализуются как extract с status failed
+                         (rejection_reason extract_exception), а не обрывают ответ 500.
+      POST /api/extract и POST /api/extract/ — JSON {"job_id": "..."}; для CLI/интеграций;
+                         404 с телом {error, detail} если нет job или манифеста.
+      POST /api/match и POST /api/match/ — JSON {"job_id": "..."}; запускает CRM-сверку по
+                         extraction.json, 404 если job или extraction.json отсутствуют.
+      POST /api/route и POST /api/route/ — JSON {"job_id": "..."}; строит routing по
+                         extraction.json + matching.json, 404 если нет манифестов.
+      POST /api/template и POST /api/template/ — JSON {"job_id": "..."}; формирует
+                         prepared_document.txt и template.json.
+      POST /api/send-template и POST /api/send-template/ — JSON {"job_id", "recipient_email"};
+                         отправляет prepared_document.txt по SMTP.
+    Импорты: agents.intake, agents.extract, agents.match, agents.route, agents.template
+             (корень проекта в PYTHONPATH при cwd = корень «Агент»).
+  - web/static/index.html — UI: POST /api/intake (только файл в FormData), пять блоков JSON
+                         (intake + extract + match + route + template). Если Intake accepted, а поля extract нет
+                         или оно null — запасной POST /api/extract по job_id (совместимость со
+                         старым воркером uvicorn, отдававшим плоский JSON Intake). При extract ok
+                         вызывается POST /api/match по job_id; затем POST /api/route по job_id и
+                         POST /api/template по job_id; после этого доступно поле email и кнопка
+                         отправки через POST /api/send-template.
+    Запросы на window.location.origin; страница с http://127.0.0.1:8000/.
+
+5.3. CORS
+  - В app.py включён CORSMiddleware allow_origins=["*"] (удобно для локальной разработки).
+
+================================================================================
+6. ЗАПУСК СЕРВЕРА И ОКОННАЯ МОДЕЛЬ WINDOWS
+================================================================================
+6.1. web/run_web.py
+  - Определяет ROOT = родитель каталога web (т.е. корень проекта «Агент»).
+  - Подпроцесс: uvicorn … --reload --reload-dir ROOT --reload-include web/reload.trigger
+    (перезапуск при изменении .py в проекте и при обновлении mtime файла web/reload.trigger).
+  - web/app.py: middleware на GET / — при «настоящем» обновлении вкладки (F5: Sec-Fetch-Mode:
+    navigate + Referer + не urllib) вызывается touch на web/reload.trigger → uvicorn перезапускает
+    воркер. Первый заход без Referer и проверка из run_web (Python-urllib) не трогают файл —
+    без лишнего цикла перезапусков.
+  - Файл web/reload.trigger в .gitignore.
+  - cwd подпроцесса = ROOT (иначе ломаются импорты и пути data/).
+  - Ожидание готовности: опрос http://127.0.0.1:8000/ через urllib; затем webbrowser.open.
+  - Windows: subprocess.CREATE_NO_WINDOW — чтобы дочерний uvicorn не открывал консоль.
+  - Сообщения print в консоль только если stdout.isatty() (удобно при ручном запуске
+    из терминала; при pythonw — тихо).
+
+6.2. web/start_web.vbs
+  - Двойной щелчок БЕЗ чёрного окна cmd.
+  - Запускает .venv\Scripts\pythonw.exe web\run_web.py если venv есть, иначе pyw -3.
+  - WorkingDirectory (через WScript.Shell.CurrentDirectory) = корень проекта.
+  - sh.Run cmdLine, 0, False — скрытое окно, не ждать завершения (скрипт выходит,
+    процесс pythonw с сервером остаётся в фоне).
+
+6.3. Удалённые / заменённые артефакты запуска
+  - Ранее в корне были run_web.py и start_web.bat — перенесены в web/, затем bat удалён
+    из-за невозможности убрать всплывающее окно cmd полностью.
+  - web/start_web.bat (с cd .. и pause) удалён; web/start_web_debug.bat создавали и
+    затем удалили по запросу пользователя («зачем он нам»).
+  - Итог: основной запуск для пользователя — start_web.vbs; отладка вручную:
+    .\.venv\Scripts\python web\run_web.py
+
+6.4. Остановка «тихого» сервера
+  - Нет окна — нет Ctrl+C. Остановка: диспетчер задач → завершить pythonw.exe
+    (или соответствующий процесс). В будущем можно добавить кнопку «Стоп» в UI или
+    endpoint — пока не сделано.
+
+================================================================================
+7. ЗАВИСИМОСТИ (requirements.txt, корень)
+================================================================================
+pydantic>=2.5
+pypdf>=4.0
+fastapi>=0.115
+uvicorn[standard]>=0.32
+python-multipart>=0.0.9
+
+================================================================================
+8. ПРОЧЕЕ (GIT, ПУТИ)
+================================================================================
+- Рабочая папка проекта на машине пользователя: Desktop\Агент (кириллица в пути).
+  - .gitignore в корне: data/, __pycache__/, .venv/, .env — артефакты данных и окружения
+  не коммитить. Для веба на машине разработчика: из корня «Агент» выполнить
+  py -3 -m venv .venv && .\.venv\Scripts\pip install -r requirements.txt — иначе start_web.vbs
+  без venv опирается на системный pyw и может не найти fastapi/uvicorn.
+- Сгенерированные data/jobs/ появляются после успешного intake.
+
+================================================================================
+9. ОГРАНИЧЕНИЯ И ОТКРЫТЫЕ ЗАДАЧИ (СЛЕДУЮЩИЕ ШАГИ РАЗРАБОТКИ)
+================================================================================
+- OCR для сканов и растров; улучшение Extract (LLM-структурирование, точность сумм).
+- Внешняя CRM/таблица (реальная интеграция) и полноценные шаблоны исходящих документов
+  (сейчас шаблон = текстовый prepared_document.txt).
+- Оркестратор цепочки (явный workflow), очередь задач, human-in-the-loop UI —
+  не реализованы (маршрутизация сейчас rule-based и локальная).
+- Нет аутентификации API; порт 8000 фиксирован; нет HTTPS.
+- LLM для классификации не подключён — только эвристики по имени файла и PDF-тексту.
+- Новый чат Cursor не видит старую переписку автоматически — этот файл компенсирует.
+
+================================================================================
+10. КРАТКАЯ ХРОНОЛОГИЯ ДИАЛОГА (ЛОГИКА РАЗВИТИЯ СОБЫТИЙ)
+================================================================================
+1) Идея портфольного проекта из агентов; выбор варианта 2 (документы).
+2) Обсуждение структуры: подпапка на агента + core/tools/orchestration.
+3) Спецификация первого агента Intake (без глубокого парсинга полей).
+4) Реализация Intake + CLI + requirements + .gitignore.
+5) Запрос веб-окна загрузки; реализация в web/, интеграция POST /api/intake.
+6) Запускной скрипт: run_web.py; перенос в web/; отказ от видимой консоли — VBS +
+   pythonw + CREATE_NO_WINDOW; удаление отладочного bat.
+7) Иконка/ярлык (позже удалены из проекта по решению пользователя).
+8) Вопрос про New Agent: код на диске vs память чата — объяснено.
+9) Запрос этого документа + обязательное ведение журнала изменений с текущей секунды.
+10) Второй агент Extract, intake.json, POST /api/extract, цепочка в UI.
+11) Скрипт scripts/test_two_agents.py для проверки цепочки из консоли.
+12) UI: цепочка Intake+Extract в одном ответе POST /api/intake (без флага chain_extract, без второго запроса).
+13) Третий агент Match: локальная CRM-сверка по INN, API POST /api/match, скрипт test_three_agents.
+14) Четвёртый агент Route: финальное rule-based routing-решение, API POST /api/route, скрипт test_four_agents.
+15) Пятый агент Template: генерация prepared_document.txt и отправка по email (SMTP), API
+    POST /api/template и /api/send-template, скрипт test_five_agents.
+
+================================================================================
+11. ЖУРНАЛ РАЗРАБОТКИ (ХРОНИКА; ДОПОЛНЯТЬ ПОСЛЕ КАЖДОГО ЗНАЧИМОГО ШАГА)
+================================================================================
+Тело конспекта выше = актуальное состояние. Журнал = последовательность шагов; при
+удалении функциональности новая запись фиксирует факт и ссылку на обновлённые разделы.
+
+Формат записи:
+  [ГГГГ-ММ-ДД] Краткий заголовок
+    - что сделано (файлы)
+    - зачем
+    - заметки / риски; если удалили код — что убрано из конспекта (разделы до журнала)
+
+--- записи ниже ---
+
+[2026-03-23] Создан файл PROJECT_CONTEXT.txt
+    - Добавлен c:\Users\Семен\Desktop\Агент\PROJECT_CONTEXT.txt — полный конспект
+      диалога, архитектуры, поведения Intake, веб-слоя, запуска Windows, иконки,
+      зависимостей, следующих шагов.
+    - Введено обязательное правило для будущих ассистентов: после каждого значимого
+      изменения дополнять раздел «ЖУРНАЛ РАЗРАБОТКИ» без напоминания пользователя.
+    - Причина: перенос контекста между чатами Cursor (New Agent не видит старую переписку).
+
+[2026-03-23] Правило Cursor — автоконспект без напоминания
+    - Добавлен .cursor/rules/project-context-journal.mdc с alwaysApply: true: после каждого
+      значимого шага ассистент дополняет «ЖУРНАЛ РАЗРАБОТКИ» в PROJECT_CONTEXT.txt; при
+      устаревании разделов 1–10 — кратко обновляет их в том же файле.
+    - В блок «Рекомендация пользователю» в начале документа добавлена отсылка к этому правилу.
+    - Запрос пользователя: конспектировать дальнейшую разработку без явной просьбы после шага.
+
+[2026-03-23] Конспект = актуальное состояние; при удалениях чистить основной текст
+    - Обновлены .cursor/rules/project-context-journal.mdc: обязанность не только дополнять
+      журнал, но и править/удалять устаревшие абзацы в разделах 1–10 и преамбуле при
+      изменениях и удалениях в проекте; журнал дополнять записью о ревизии.
+    - В начале PROJECT_CONTEXT.txt уточнены назначение файла и «КРИТИЧЕСКОЕ ПРАВИЛО»;
+      заголовок раздела 11 и формат записи — разделение «снимок сейчас» vs «хроника».
+    - Запрос пользователя: конспект всегда отражал нынешнее положение разработки.
+
+[2026-03-23] Удалены иконка, скрипты ярлыка и Pillow
+    - Удалены web/build_launcher_icon.py, web/create_desktop_shortcut.ps1.
+    - Из requirements.txt убрана зависимость pillow (использовалась только для иконки).
+    - В PROJECT_CONTEXT.txt раздел 6 переписан под актуальное состояние; п. 10 хронология
+      п.7 уточнён; добавлена эта запись журнала.
+    - Запрос пользователя: убрать всё связанное с иконкой, пока не нужно и не работает.
+    - Примечание: если у пользователя на рабочем столе остался старый .lnk — удалить вручную.
+
+[2026-03-23] Агент Extract (второй шаг), intake.json, API и UI
+    - agents/extract/: agent.py (run_extract, run_extract_by_job_id), __main__.py, __init__.py
+    - core/schemas.py: ExtractionStatus, ExtractedEntities, ExtractionResult; core/config.py:
+      лимиты извлечения текста PDF
+    - tools/pdf_text.py, tools/entity_patterns.py, tools/job_manifest.py (load_intake_result)
+    - agents/intake/agent.py: при accepted запись data/jobs/{job_id}/intake.json
+    - web/app.py: POST /api/extract {job_id}; web/static/index.html: после intake авто-вызов extract
+    - PROJECT_CONTEXT.txt: новый раздел 4 (Extract), сдвиг нумерации 4→5…11→12; преамбула и
+      правила обновлены под раздел 12 «ЖУРНАЛ».
+    - Запрос пользователя: продолжить разработку — второй агент.
+
+[2026-03-23] Тест связки Intake + Extract (scripts/test_two_agents.py)
+    - Добавлен scripts/test_two_agents.py: минимальный PDF встроен в скрипт, прогон Intake
+      и Extract, assert на ИНН; в конспекте п. 4.5.
+    - Запрос пользователя: протестировать работу двух агентов вместе.
+    - Примечание: эвристика сумм может давать ложные кандидаты (например фрагмент даты).
+
+[2026-03-23] Web: 404 Not Found на /api/extract — подсказки и маршрут со слэшем
+    - web/app.py: дублирован POST /api/extract/ (на случай клиента со слэшем).
+    - web/static/index.html: fetch через origin; parseJsonSafe; при 404 различать job_not_found
+      и отсутствие маршрута (перезапуск uvicorn, открывать http://127.0.0.1:8000/, не файл/Live Server);
+      lead-текст с предупреждением.
+    - PROJECT_CONTEXT п. 5.2 уточнён.
+    - Симптом пользователя: ошибка Extract: Not Found.
+
+[2026-03-23] run_web.py: uvicorn --reload
+    - web/run_web.py: добавлены флаги --reload и --reload-dir ROOT для автоперезапуска при
+      правках кода; PROJECT_CONTEXT п. 6.1 обновлён.
+    - Запрос пользователя: при запуске веба автоматическая перезагрузка run_web/сервера.
+
+[2026-03-23] Web UI: Intake+Extract в одном запросе (chain_extract)
+    - web/app.py: query-параметр chain_extract на POST /api/intake; при true ответ {intake, extract}.
+    - web/static/index.html: один fetch на /api/intake?chain_extract=1, без отдельного POST /api/extract.
+    - PROJECT_CONTEXT п. 2.1 и 5.2 обновлены.
+    - Причина: у пользователя второй запрос к /api/extract стабильно возвращал 404 Not Found.
+
+[2026-03-23] chain_extract: run_extract(result) вместо чтения intake.json
+    - web/app.py: при chain_extract вызывается run_extract(result) с объектом IngestionResult из памяти,
+      а не run_extract_by_job_id (избежание гонки/невидимости intake.json сразу после записи на Windows).
+    - tools/job_manifest.py: в load_intake_result явно ловится pydantic.ValidationError.
+    - Симптом пользователя: «Extract не вернул данные (проверьте intake.json)».
+
+[2026-03-23] F5 на главной → touch reload.trigger → uvicorn reload
+    - web/run_web.py: --reload-include web/reload.trigger.
+    - web/app.py: middleware reload_server_on_index_refresh (условия navigate, Referer, не urllib).
+    - .gitignore: web/reload.trigger; PROJECT_CONTEXT п. 6.1.
+    - Запрос пользователя: при обновлении страницы перезапускать uvicorn.
+
+[2026-03-23] chain_extract: Form вместо query (исправление «Extract не вернул данные» в вебе)
+    - web/app.py: chain_extract перенесён с Query на Form (multipart).
+    - web/static/index.html: fd.append("chain_extract", "true"), URL без ?chain_extract=1.
+    - Причина: query при POST multipart в части браузеров/прокси не доходил до FastAPI → ответ без
+      вложенного extract, на клиенте extract === undefined.
+    - PROJECT_CONTEXT п. 2.1, 5.2, хронология п.12 обновлены.
+
+[2026-03-23] POST /api/intake: всегда {intake, extract} (убран chain_extract)
+    - web/app.py: флаг chain_extract удалён; после каждого upload при accepted вызывается run_extract(result),
+      ответ всегда JSON {"intake", "extract"} (при rejected extract = null).
+    - web/static/index.html: убрано поле FormData chain_extract.
+    - Причина: bool Form в multipart по-прежнему мог не парситься → плоский ответ без extract и сообщение UI
+      «Extract не вернул данные».
+
+[2026-03-23] Конспект: удалён раздел «иконка / ярлык»; нумерация разделов 8–12 → 7–11
+    - PROJECT_CONTEXT.txt: убран отдельный блок про launcher.ico и ярлык на рабочем столе
+      (информация дублировала журнал и п. 6.3–6.4 / п. 5); разделы «Зависимости» … «Журнал»
+      перенумерованы без пропуска «7».
+    - .cursor/rules/project-context-journal.mdc: ссылка на номер раздела журнала обновлена на 11.
+    - Запрос пользователя: убрать раздел 6 «ИКОНКА / ЯРЛЫК» из конспекта и выровнять нумерацию.
+
+[2026-03-23] Web: «Extract не вернул данные» при рабочем Intake — fallback и укрепление API
+    - web/static/index.html: при accepted и отсутствии/ null extract — второй запрос POST /api/extract {job_id}
+      (плоский ответ старого процесса uvicorn без обёртки {intake, extract}).
+    - web/app.py: _ingestion_accepted(); try/except вокруг run_extract → extract с failed при неожиданной ошибке;
+      GET / отдаёт index.html с Cache-Control: no-store.
+    - PROJECT_CONTEXT п. 5.2 обновлён.
+    - Симптом пользователя: после загрузки schet_demo.pdf — Intake ок, extract пустой в UI.
+
+[2026-03-23] Локальное окружение: venv + перезапуск веба
+    - В корне проекта создано .venv, установлены зависимости из requirements.txt (системный py -3
+      без fastapi не поднимал uvicorn; start_web.vbs при отсутствии .venv вызывает pyw -3 и тоже молча падал).
+    - Остановлены процессы на порту 8000; сервер запущен через .venv\Scripts\python.exe web\run_web.py
+      (как делает VBS после появления venv).
+    - Запрос пользователя: «сделай за меня» (остановка старого сервера и запуск актуального).
+
+[2026-03-23] Третий агент Match (CRM-сверка по INN)
+    - Добавлены agents/match/{agent.py,__init__.py,__main__.py: run_match, run_match_by_job_id,
+      CLI python -m agents.match <job_id>.
+    - tools/crm_registry.py: локальный CRM-реестр и нормализация/поиск INN; tools/extraction_manifest.py:
+      загрузка extraction.json.
+    - core/schemas.py: MatchStatus, CRMMatchItem, MatchingResult.
+    - web/app.py: POST /api/match и /api/match/ для запуска сверки по job_id.
+    - scripts/test_three_agents.py: проверка связки Intake -> Extract -> Match.
+    - PROJECT_CONTEXT.txt: обновлены разделы 1, 2, 3.2, 4.6, 5.2, 9, 10 и добавлена эта запись.
+    - Запрос пользователя: «третий агент должен реализовать функционал как в 1 пункте»
+      (сверка с CRM/таблицей).
+
+[2026-03-23] Web UI: добавлен вывод Match (третий блок)
+    - web/static/index.html: заголовок/lead обновлены под Intake + Extract + Match;
+      добавлены label/pre для Match; после extract.status=ok вызывается POST /api/match и
+      выводится matching JSON со статусами ok/no_match/skipped/failed.
+    - PROJECT_CONTEXT.txt: п. 5.2 обновлён (UI теперь отображает три блока JSON).
+    - Запрос пользователя: «давай» (добавить Match в интерфейс и протестировать).
+
+[2026-03-23] Добавлен rich PDF для ручного QA цикла агентов
+    - Создан data/_test_run/schet_rich_demo.pdf с расширенным набором тестовых данных:
+      несколько INN-кандидатов (10/12 цифр), несколько дат и суммы в разных форматах.
+    - Выполнен прогон Intake -> Extract -> Match на новом файле: статусы accepted/ok/ok.
+    - PROJECT_CONTEXT.txt: в п. 4.5 добавлено упоминание rich тестового PDF.
+    - Запрос пользователя: создать тестовый PDF «с множеством разных данных» для цикла обработки.
+
+[2026-03-23] Четвёртый агент Route (финальная маршрутизация)
+    - Добавлены agents/route/{agent.py,__init__.py,__main__.py: run_route_by_job_id, CLI route}.
+    - core/schemas.py: RouteStatus, RoutingResult; tools/matching_manifest.py: загрузка matching.json.
+    - web/app.py: POST /api/route и /api/route/ (маршрутизация по job_id).
+    - web/static/index.html: добавлен 4-й блок Route; после Match вызывается /api/route и
+      показывается routing JSON + итоговый статус.
+    - scripts/test_four_agents.py: проверка цепочки Intake -> Extract -> Match -> Route.
+    - PROJECT_CONTEXT.txt: обновлены разделы 1, 2, 3.2, 4.7, 5.2, 9, 10; добавлена эта запись.
+    - Запрос пользователя: «Действуй» (логичное завершение цепочки — четвёртый агент маршрутизации).
+
+[2026-03-23] Пятый агент Template + Email Send
+    - Добавлены agents/template/{agent.py,__init__.py,__main__.py}: генерация prepared_document.txt,
+      template.json и отправка email (send_template_by_job_id).
+    - tools/email_sender.py: SMTP-отправка с env-конфигом; tools/routing_manifest.py: загрузка routing.json.
+    - core/schemas.py: TemplateStatus/TemplateResult, EmailSendStatus/EmailSendResult.
+    - web/app.py: API POST /api/template и POST /api/send-template.
+    - web/static/index.html: 5-й блок Template + поле recipient email + кнопка отправки.
+    - scripts/test_five_agents.py: проверка цепочки Intake -> Extract -> Match -> Route -> Template.
+    - PROJECT_CONTEXT.txt: обновлены разделы 1, 2, 3.2, 4.8, 5.2, 9, 10; добавлена эта запись.
+    - Запрос пользователя: пятый агент должен сформировать шаблон, запросить email и отправлять документ.
+
+================================================================================
+КОНЕЦ ФАЙЛА (новые записи журнала — только ПОД строкой «--- записи ниже ---»)
+================================================================================
