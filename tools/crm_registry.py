@@ -6,6 +6,7 @@ from core.schemas import CRMMatchItem
 
 
 _CRM_ROWS: dict[str, CRMMatchItem] = {
+    # Enterprise clients
     "7707083893": CRMMatchItem(
         inn="7707083893",
         company_name="ООО Ромашка",
@@ -23,6 +24,60 @@ _CRM_ROWS: dict[str, CRMMatchItem] = {
         company_name="ООО СеверТех",
         account_manager="Алексей Орлов",
         segment="Enterprise",
+    ),
+    "7736050003": CRMMatchItem(
+        inn="7736050003",
+        company_name="ПАО Газпром",
+        account_manager="Дмитрий Волков",
+        segment="Enterprise",
+    ),
+    "7702070139": CRMMatchItem(
+        inn="7702070139",
+        company_name="ПАО Сбербанк",
+        account_manager="Елена Захарова",
+        segment="Enterprise",
+    ),
+    "7743013901": CRMMatchItem(
+        inn="7743013901",
+        company_name="ООО Яндекс",
+        account_manager="Сергей Новиков",
+        segment="Mid-Market",
+    ),
+    "7841499707": CRMMatchItem(
+        inn="7841499707",
+        company_name="АО Мегафон",
+        account_manager="Ольга Кузнецова",
+        segment="Enterprise",
+    ),
+    "5261053619": CRMMatchItem(
+        inn="5261053619",
+        company_name="ООО ТехноПром",
+        account_manager="Артём Лебедев",
+        segment="SMB",
+    ),
+    "7705841820": CRMMatchItem(
+        inn="7705841820",
+        company_name="ООО Авито",
+        account_manager="Наталья Морозова",
+        segment="Mid-Market",
+    ),
+    "7714406582": CRMMatchItem(
+        inn="7714406582",
+        company_name="ООО ВкусВилл",
+        account_manager="Павел Козлов",
+        segment="SMB",
+    ),
+    "7830002223": CRMMatchItem(
+        inn="7830002223",
+        company_name="АО Ленэнерго",
+        account_manager="Татьяна Соколова",
+        segment="Enterprise",
+    ),
+    "6671004690": CRMMatchItem(
+        inn="6671004690",
+        company_name="ООО УралСтрой",
+        account_manager="Виктор Попов",
+        segment="SMB",
     ),
 }
 

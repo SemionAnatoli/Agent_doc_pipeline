@@ -23,22 +23,28 @@ def run_route_by_job_id(job_id: str) -> RoutingResult | None:
                 "status": RouteStatus.REVIEW_REQUIRED,
                 "queue": "ocr_review",
                 "priority": "high",
-                "reasons": [f"extract_status={extraction.status.value}"],
-                "next_actions": ["Проверить качество входного файла", "Добавить OCR-обработку"],
+                "reasons": ["Text extraction was skipped or failed — document may be a scanned image"],
+                "next_actions": [
+                    "Verify the input file quality",
+                    "Enable OCR processing for scanned documents",
+                ],
                 "notes": "routing_from_extract_and_match",
             }
         )
     elif matching.status == MatchStatus.OK:
-        reasons = ["crm_match_found"]
+        reasons = ["Counterparty matched in CRM"]
         if len(matching.checked_inn) > 1:
-            reasons.append("multiple_inn_candidates")
+            reasons.append("Multiple INN candidates were evaluated")
         result = base.model_copy(
             update={
                 "status": RouteStatus.READY_FOR_TEMPLATE,
                 "queue": "templating",
                 "priority": "normal",
                 "reasons": reasons,
-                "next_actions": ["Сформировать исходящий шаблон документа", "Передать в канал отправки"],
+                "next_actions": [
+                    "Generate outgoing document template",
+                    "Send prepared document to the recipient",
+                ],
                 "notes": "routing_from_extract_and_match",
             }
         )
@@ -48,8 +54,11 @@ def run_route_by_job_id(job_id: str) -> RoutingResult | None:
                 "status": RouteStatus.REVIEW_REQUIRED,
                 "queue": "crm_enrichment",
                 "priority": "high",
-                "reasons": ["crm_match_not_found"],
-                "next_actions": ["Проверить ИНН вручную", "Добавить/обновить контрагента в CRM"],
+                "reasons": ["INN was not matched to any company in the CRM database"],
+                "next_actions": [
+                    "Verify the extracted INN manually",
+                    "Add or update the counterparty record in CRM",
+                ],
                 "notes": "routing_from_extract_and_match",
             }
         )
@@ -59,8 +68,11 @@ def run_route_by_job_id(job_id: str) -> RoutingResult | None:
                 "status": RouteStatus.REVIEW_REQUIRED,
                 "queue": "doc_control",
                 "priority": "high",
-                "reasons": [f"match_status={matching.status.value}"],
-                "next_actions": ["Проверить извлечённые сущности", "Повторить Extract/Match"],
+                "reasons": ["CRM matching was skipped — no entities available for lookup"],
+                "next_actions": [
+                    "Review the extracted entities",
+                    "Re-run extraction and matching steps",
+                ],
                 "notes": "routing_from_extract_and_match",
             }
         )

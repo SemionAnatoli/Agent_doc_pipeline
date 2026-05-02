@@ -29,8 +29,16 @@ def extract_entities_from_text(text: str) -> ExtractedEntities:
         dates.append(m.group(0))
 
     money: list[str] = []
+    # Two alternatives:
+    # 1. With thousand separator (spaces/nbsp) — currency optional.
+    # 2. Without separator — currency unit required (prevents date fragments like 15.04).
+    # Negative lookahead (?![.,]\d) ensures we don't consume DD.MM from DD.MM.YYYY.
     money_re = re.compile(
-        r"(?:\d{1,3}(?:\s\d{3})+|\d+)\s*[.,]\s*\d{2}(?:\s*(?:руб|руб\.|₽|RUB))?",
+        r"(?:"
+        r"(?:\d{1,3}(?:[  ]\d{3})+)[.,]\d{2}(?![.,]\d)(?:\s*(?:руб\.?|₽|RUB))?"
+        r"|"
+        r"\d+[.,]\d{2}(?![.,]\d)\s*(?:руб\.?|₽|RUB)"
+        r")",
         re.IGNORECASE,
     )
     for m in money_re.finditer(text):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 from core.config import JOBS_DIR
@@ -20,40 +21,94 @@ from tools.extraction_manifest import load_extraction_result
 from tools.matching_manifest import load_matching_result
 from tools.routing_manifest import load_routing_result
 
+_QUEUE_LABELS = {
+    "templating": "Ready for delivery",
+    "crm_enrichment": "CRM enrichment required",
+    "ocr_review": "OCR review required",
+    "doc_control": "Document control review",
+}
 
-def _build_template_text(job_id: str, extraction: ExtractionResult, matching: MatchingResult, routing: RoutingResult) -> str:
+_SEGMENT_LABELS = {
+    "SMB": "Small & Medium Business",
+    "Mid-Market": "Mid-Market",
+    "Enterprise": "Enterprise",
+}
+
+
+def _build_template_text(
+    job_id: str,
+    extraction: ExtractionResult,
+    matching: MatchingResult,
+    routing: RoutingResult,
+) -> str:
+    today = date.today().strftime("%d.%m.%Y")
     first_match = matching.matches[0] if matching.matches else None
-    company = first_match.company_name if first_match else "Не определено"
-    manager = first_match.account_manager if first_match else "Не назначен"
-    inn = first_match.inn if first_match else (matching.checked_inn[0] if matching.checked_inn else "Не найден")
-    dates = extraction.entities.date_candidates if extraction.entities else []
-    sums = extraction.entities.money_candidates if extraction.entities else []
+
+    company = first_match.company_name if first_match else "Not identified"
+    manager = first_match.account_manager if first_match else "Not assigned"
+    segment = _SEGMENT_LABELS.get(first_match.segment, first_match.segment) if first_match and first_match.segment else "—"
+    inn = first_match.inn if first_match else (matching.checked_inn[0] if matching.checked_inn else "Not found")
+
+    entities = extraction.entities
+    dates = entities.date_candidates if entities else []
+    sums = entities.money_candidates if entities else []
+    doc_kind = (extraction.document_kind.value if hasattr(extraction.document_kind, "value") else str(extraction.document_kind)).capitalize()
+
+    queue_label = _QUEUE_LABELS.get(routing.queue or "", routing.queue or "—")
+
+    sep = "─" * 60
+
     lines = [
-        "Исходящий шаблон документа",
-        f"Job ID: {job_id}",
+        "DOCFLOW PIPELINE — PREPARED DOCUMENT",
+        sep,
         "",
-        "Реквизиты контрагента:",
-        f"- Компания: {company}",
-        f"- ИНН: {inn}",
-        f"- Ответственный менеджер: {manager}",
+        f"  Reference:   {job_id}",
+        f"  Prepared on: {today}",
+        f"  Document type: {doc_kind}",
         "",
-        "Извлеченные данные:",
-        f"- Даты: {', '.join(dates) if dates else 'нет'}",
-        f"- Суммы: {', '.join(sums) if sums else 'нет'}",
+        sep,
+        "  COUNTERPARTY DETAILS",
+        sep,
+        f"  Company:         {company}",
+        f"  INN:             {inn}",
+        f"  Account manager: {manager}",
+        f"  Segment:         {segment}",
         "",
-        "Маршрутизация:",
-        f"- Статус: {routing.status.value}",
-        f"- Очередь: {routing.queue or 'не задана'}",
-        f"- Приоритет: {routing.priority or 'не задан'}",
-        f"- Причины: {', '.join(routing.reasons) if routing.reasons else 'нет'}",
+        sep,
+        "  EXTRACTED DATA",
+        sep,
+        f"  Dates found:   {', '.join(dates) if dates else 'none'}",
+        f"  Amounts found: {', '.join(sums) if sums else 'none'}",
         "",
-        "Следующие шаги:",
+        sep,
+        "  ROUTING DECISION",
+        sep,
+        f"  Status:   {routing.status.value.replace('_', ' ').title()}",
+        f"  Queue:    {queue_label}",
+        f"  Priority: {(routing.priority or '—').title()}",
     ]
-    for action in routing.next_actions:
-        lines.append(f"- {action}")
-    if not routing.next_actions:
-        lines.append("- не указаны")
-    return "\n".join(lines) + "\n"
+
+    if routing.reasons:
+        lines.append("")
+        lines.append("  Reasons:")
+        for r in routing.reasons:
+            lines.append(f"    • {r}")
+
+    if routing.next_actions:
+        lines.append("")
+        lines.append("  Next actions:")
+        for a in routing.next_actions:
+            lines.append(f"    • {a}")
+
+    lines += [
+        "",
+        sep,
+        "  This document was generated automatically by DocFlow.",
+        "  Please do not reply to this message.",
+        sep,
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def run_template_by_job_id(job_id: str) -> TemplateResult | None:
@@ -111,12 +166,22 @@ def send_template_by_job_id(job_id: str, recipient_email: str) -> EmailSendResul
     doc_path = JOBS_DIR / job / "prepared_document.txt"
     if not doc_path.is_file():
         return None
-    subject = f"Документ по задаче {job}"
+
+    matching = load_matching_result(job)
+    company = "—"
+    if matching and matching.matches:
+        company = matching.matches[0].company_name
+
+    subject = f"DocFlow — Prepared document for {company} (Job {job[:8]})"
     body = (
-        "Здравствуйте!\n\n"
-        "Во вложении подготовленный документ из конвейера обработки.\n\n"
-        "С уважением,\n"
-        "Document Pipeline Agent"
+        "Hello,\n\n"
+        "Please find the prepared document attached.\n\n"
+        f"Counterparty: {company}\n"
+        f"Job reference: {job}\n\n"
+        "This message was generated automatically by DocFlow Pipeline.\n"
+        "Please do not reply to this email.\n\n"
+        "Best regards,\n"
+        "DocFlow Document Processing System"
     )
     ok, note = send_document_email(recipient, subject, body, doc_path)
     result = EmailSendResult(

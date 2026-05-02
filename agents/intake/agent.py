@@ -3,6 +3,7 @@ from pathlib import Path
 
 from core.config import ALLOWED_EXTENSIONS, MAX_FILE_BYTES
 from core.schemas import DocumentKind, IngestionResult, IngestionStatus
+from tools.docx_text import count_docx_pages, extract_docx_plain_text
 from tools.pdf_inspect import inspect_pdf
 from tools.storage import new_job_id, store_upload
 
@@ -87,6 +88,19 @@ def run_intake(source_path: Path) -> IngestionResult:
                 status=IngestionStatus.REJECTED,
                 original_filename=filename,
                 rejection_reason="pdf_read_error",
+                notes=str(exc),
+            )
+    elif ext == ".docx":
+        try:
+            page_count = count_docx_pages(path)
+            needs_ocr = False
+            notes_parts.append("docx_native_text")
+        except Exception as exc:  # noqa: BLE001
+            return IngestionResult(
+                job_id=job_id,
+                status=IngestionStatus.REJECTED,
+                original_filename=filename,
+                rejection_reason="docx_read_error",
                 notes=str(exc),
             )
     else:

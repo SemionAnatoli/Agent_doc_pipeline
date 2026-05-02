@@ -4,7 +4,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 JOBS_DIR = DATA_DIR / "jobs"
 
-ALLOWED_EXTENSIONS = frozenset({".pdf", ".png", ".jpg", ".jpeg"})
+ALLOWED_EXTENSIONS = frozenset({".pdf", ".png", ".jpg", ".jpeg", ".docx"})
 MAX_FILE_BYTES = 25 * 1024 * 1024
 # If extracted text from first PDF pages is shorter, treat as scan / image-heavy.
 MIN_TEXT_CHARS_FOR_NATIVE_PDF = 80

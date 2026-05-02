@@ -1,0 +1,52 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 1216 >>
+stream
+BT /F1 10 Tf 45 780 Td (=== INVOICE No. 2025-03-088 ===) Tj ET
+BT /F1 10 Tf 45 766 Td () Tj ET
+BT /F1 10 Tf 45 752 Td (Seller:  OOO StroiMaterial Plus) Tj ET
+BT /F1 10 Tf 45 738 Td (INN:     9999012345   KPP: 999901001) Tj ET
+BT /F1 10 Tf 45 724 Td (Address: Novosibirsk, ul. Kirova 78) Tj ET
+BT /F1 10 Tf 45 710 Td () Tj ET
+BT /F1 10 Tf 45 696 Td (Buyer:   OOO TransAvto) Tj ET
+BT /F1 10 Tf 45 682 Td (INN:     8812345678   KPP: 881201001) Tj ET
+BT /F1 10 Tf 45 668 Td (Address: Yekaterinburg, pr. Mira 5) Tj ET
+BT /F1 10 Tf 45 654 Td () Tj ET
+BT /F1 10 Tf 45 640 Td (Invoice date: 10.03.2025) Tj ET
+BT /F1 10 Tf 45 626 Td (Payment due:  25.03.2025) Tj ET
+BT /F1 10 Tf 45 612 Td () Tj ET
+BT /F1 10 Tf 45 598 Td (Goods supplied:) Tj ET
+BT /F1 10 Tf 45 584 Td () Tj ET
+BT /F1 10 Tf 45 570 Td (1. Cement M500, 10 tons              85 000,00 rub.) Tj ET
+BT /F1 10 Tf 45 556 Td (2. Reinforcement rebar 12mm, 2 tons  42 500,00 rub.) Tj ET
+BT /F1 10 Tf 45 542 Td (3. Delivery to site                   7 500,00 rub.) Tj ET
+BT /F1 10 Tf 45 528 Td () Tj ET
+BT /F1 10 Tf 45 514 Td (TOTAL DUE: 135 000,00 rub.) Tj ET
+BT /F1 10 Tf 45 500 Td () Tj ET
+BT /F1 10 Tf 45 486 Td (INN seller: 9999012345   INN buyer: 8812345678) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001509 00000 n 
+trailer<< /Size 6 /Root 1 0 R >>
+startxref
+1579
+%%EOF

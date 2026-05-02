@@ -1,452 +1,1131 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Конвейер документов — Intake + Extract + Match + Route + Template</title>
+  <title>DocFlow — Document Processing Pipeline</title>
   <style>
     :root {
-      --bg: #0f1419;
-      --panel: #1a2332;
-      --border: #2d3a4f;
-      --text: #e7edf5;
-      --muted: #8b9cb3;
-      --accent: #3d8bfd;
-      --ok: #3ecf8e;
-      --err: #f07178;
+      --bg: #F1F5F9;
+      --surface: #FFFFFF;
+      --surface2: #F8FAFC;
+      --border: #E2E8F0;
+      --border-strong: #CBD5E1;
+      --text: #0F172A;
+      --text-secondary: #475569;
+      --text-muted: #94A3B8;
+      --accent: #4F46E5;
+      --accent-hover: #4338CA;
+      --accent-light: #EEF2FF;
+      --success: #059669;
+      --success-bg: #ECFDF5;
+      --success-border: #A7F3D0;
+      --warning: #D97706;
+      --warning-bg: #FFFBEB;
+      --warning-border: #FDE68A;
+      --error: #DC2626;
+      --error-bg: #FEF2F2;
+      --error-border: #FECACA;
+      --shadow: 0 1px 3px 0 rgb(0 0 0/0.08), 0 1px 2px -1px rgb(0 0 0/0.06);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0/0.08), 0 2px 4px -2px rgb(0 0 0/0.05);
+      --radius: 10px;
+      --radius-lg: 14px;
     }
-    * { box-sizing: border-box; }
+
+    [data-theme="dark"] {
+      --bg: #0F172A;
+      --surface: #1E293B;
+      --surface2: #162032;
+      --border: #334155;
+      --border-strong: #475569;
+      --text: #F1F5F9;
+      --text-secondary: #CBD5E1;
+      --text-muted: #64748B;
+      --accent-light: #1E1B4B;
+      --success-bg: #022C22;
+      --success-border: #065F46;
+      --warning-bg: #1C1200;
+      --warning-border: #854D0E;
+      --error-bg: #1C0606;
+      --error-border: #7F1D1D;
+      --shadow: 0 1px 3px 0 rgb(0 0 0/0.4), 0 1px 2px -1px rgb(0 0 0/0.3);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: "Segoe UI", system-ui, sans-serif;
-      background: radial-gradient(1200px 600px at 20% 0%, #1a2744 0%, var(--bg) 55%);
+      font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
       color: var(--text);
-      line-height: 1.5;
+      line-height: 1.6;
+      min-height: 100vh;
     }
-    main {
-      max-width: 720px;
+
+    /* ── Navigation ── */
+    .nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-inner {
+      max-width: 960px;
       margin: 0 auto;
-      padding: 2.5rem 1.25rem 4rem;
-    }
-    h1 {
-      font-size: 1.5rem;
-      font-weight: 600;
-      margin: 0 0 0.35rem;
-    }
-    p.lead {
-      margin: 0 0 1.75rem;
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-    .drop {
-      border: 2px dashed var(--border);
-      border-radius: 12px;
-      padding: 2.25rem 1.5rem;
-      text-align: center;
-      background: var(--panel);
-      transition: border-color 0.2s, background 0.2s;
-    }
-    .drop.dragover {
-      border-color: var(--accent);
-      background: #1e2d45;
-    }
-    .drop strong { display: block; margin-bottom: 0.5rem; }
-    .drop span { font-size: 0.9rem; color: var(--muted); }
-    input[type="file"] { display: none; }
-    .actions {
-      margin-top: 1rem;
+      padding: 0 1.5rem;
+      height: 58px;
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem;
       align-items: center;
+      gap: 0.75rem;
     }
-    button {
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .nav-logo-icon {
+      width: 30px;
+      height: 30px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 15px;
+    }
+    .nav-divider { color: var(--border-strong); margin: 0 0.1rem; }
+    .nav-sub { font-size: 0.82rem; color: var(--text-muted); font-weight: 400; }
+    .theme-btn {
+      margin-left: auto;
+      background: none;
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      padding: 5px 10px;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      color: var(--text-muted);
+      transition: background .15s, border-color .15s;
+    }
+    .theme-btn:hover { background: var(--surface2); border-color: var(--accent); }
+
+    /* ── Layout ── */
+    .main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 5rem;
+    }
+
+    .page-header { margin-bottom: 1.75rem; }
+    .page-title { font-size: 1.45rem; font-weight: 700; margin-bottom: 0.3rem; }
+    .page-subtitle { color: var(--text-secondary); font-size: 0.92rem; max-width: 620px; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+    }
+
+    /* ── Upload ── */
+    .upload-card { overflow: hidden; margin-bottom: 1.25rem; }
+    .upload-zone {
+      border: 2px dashed var(--border-strong);
+      border-radius: var(--radius);
+      margin: 1.25rem 1.25rem 0;
+      padding: 2.25rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      background: var(--surface2);
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-light);
+    }
+    .upload-icon { font-size: 2.25rem; display: block; margin-bottom: 0.6rem; }
+    .upload-title { font-weight: 600; font-size: 0.97rem; margin-bottom: 0.25rem; }
+    .upload-hint { color: var(--text-muted); font-size: 0.82rem; }
+    .upload-error {
+      display: none;
+      margin-top: 0.75rem;
+      background: var(--error-bg);
+      border: 1px solid var(--error-border);
+      border-radius: 8px;
+      padding: 0.5rem 0.875rem;
+      font-size: 0.82rem;
+      color: var(--error);
+      font-weight: 500;
+    }
+    .upload-error.show { display: block; }
+    input[type="file"] { display: none; }
+
+    .upload-footer {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.875rem 1.25rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface2);
+      margin-top: 1.25rem;
+      flex-wrap: wrap;
+    }
+    .file-chip {
+      display: none;
+      align-items: center;
+      gap: 0.45rem;
+      background: var(--accent-light);
+      color: var(--accent);
+      padding: 0.3rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      flex: 1;
+      min-width: 0;
+      max-width: 340px;
+    }
+    .file-chip.show { display: flex; }
+    .file-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
       cursor: pointer;
       border: none;
       border-radius: 8px;
       padding: 0.55rem 1.1rem;
-      font-size: 0.9rem;
+      font-size: 0.875rem;
       font-weight: 500;
-      background: var(--accent);
-      color: #fff;
+      transition: background .15s, opacity .15s;
+      white-space: nowrap;
     }
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
     }
-    .file-name {
-      font-size: 0.85rem;
-      color: var(--muted);
-      word-break: break-all;
+    .btn-secondary:hover:not(:disabled) { background: var(--surface2); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover:not(:disabled) { background: #047857; }
+    .btn:disabled { opacity: 0.42; cursor: not-allowed; }
+
+    /* ── Pipeline stepper ── */
+    .stepper {
+      display: none;
+      align-items: flex-start;
+      padding: 1.25rem 1.5rem 1rem;
+      margin-bottom: 1.25rem;
     }
-    .status {
-      margin-top: 1.5rem;
-      font-size: 0.85rem;
-      color: var(--muted);
+    .stepper.show { display: flex; }
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      position: relative;
     }
-    .status.ok { color: var(--ok); }
-    .status.err { color: var(--err); }
-    pre {
-      margin-top: 1rem;
-      padding: 1rem;
-      border-radius: 10px;
-      background: #0c1018;
-      border: 1px solid var(--border);
-      overflow: auto;
+    .step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      width: 100%;
+      height: 2px;
+      background: var(--border);
+      z-index: 0;
+      transition: background .4s;
+    }
+    .step.completed:not(:last-child)::after { background: var(--success); }
+    .step-dot {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 2px solid var(--border-strong);
+      display: flex;
+      align-items: center;
+      justify-content: center;
       font-size: 0.78rem;
-      line-height: 1.45;
+      font-weight: 700;
+      color: var(--text-muted);
+      position: relative;
+      z-index: 1;
+      transition: all .3s;
     }
-    h2.out-label {
-      font-size: 0.95rem;
+    .step.completed .step-dot { background: var(--success); border-color: var(--success); color: #fff; }
+    .step.active .step-dot { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .step.error .step-dot { background: var(--error); border-color: var(--error); color: #fff; }
+    .step.warning .step-dot { background: var(--warning); border-color: var(--warning); color: #fff; }
+    .step-label {
+      margin-top: 0.45rem;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-weight: 500;
+      text-align: center;
+    }
+    .step.completed .step-label { color: var(--success); }
+    .step.active .step-label { color: var(--accent); font-weight: 600; }
+    .step.error .step-label { color: var(--error); }
+    .step.warning .step-label { color: var(--warning); }
+
+    /* ── Processing indicator ── */
+    .processing-bar {
+      display: none;
+      align-items: center;
+      gap: 0.875rem;
+      background: var(--accent-light);
+      border: 1px solid #C7D2FE;
+      border-radius: var(--radius-lg);
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .processing-bar.show { display: flex; }
+    .processing-text { font-size: 0.88rem; color: var(--accent); font-weight: 500; }
+
+    .spinner {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      border: 2px solid #C7D2FE;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .65s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Result cards ── */
+    .results { display: flex; flex-direction: column; gap: 0.875rem; }
+
+    .result-card {
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: none;
+    }
+    .result-card.show { display: block; }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.875rem 1.25rem;
+      cursor: pointer;
+      user-select: none;
+      transition: background .15s;
+    }
+    .result-header:hover { background: var(--surface2); }
+    .result-header-divider { border-top: 1px solid var(--border); }
+
+    .step-circle {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--accent-light);
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .result-title { font-weight: 600; font-size: 0.92rem; flex: 1; }
+    .chevron {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      transition: transform .2s;
+      flex-shrink: 0;
+    }
+    .result-card.expanded .chevron { transform: rotate(180deg); }
+    .result-body { display: none; padding: 1.25rem; border-top: 1px solid var(--border); }
+    .result-card.expanded .result-body { display: block; }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+      padding: 0.18rem 0.55rem;
+      border-radius: 20px;
+      font-size: 0.72rem;
       font-weight: 600;
-      margin: 1.25rem 0 0.35rem;
-      color: var(--muted);
+      white-space: nowrap;
+    }
+    .badge-success { background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); }
+    .badge-error { background: var(--error-bg); color: var(--error); border: 1px solid var(--error-border); }
+    .badge-warning { background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning-border); }
+    .badge-info { background: var(--accent-light); color: var(--accent); border: 1px solid #C7D2FE; }
+    .badge-neutral { background: #F1F5F9; color: #475569; border: 1px solid var(--border); }
+
+    /* ── Info grid ── */
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+      gap: 0.65rem;
+      margin-bottom: 0.875rem;
+    }
+    .info-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 0.75rem;
+    }
+    .info-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.2rem;
+    }
+    .info-value { font-size: 0.88rem; font-weight: 600; color: var(--text); word-break: break-word; }
+
+    /* ── Tags ── */
+    .tag-row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+    .tag {
+      background: var(--accent-light);
+      color: var(--accent);
+      padding: 0.18rem 0.5rem;
+      border-radius: 5px;
+      font-size: 0.78rem;
+      font-family: "Courier New", monospace;
+      font-weight: 600;
+    }
+    .tag-empty { color: var(--text-muted); font-size: 0.82rem; font-style: italic; }
+
+    .section-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      margin: 0.875rem 0 0.4rem;
+    }
+
+    /* ── Company card ── */
+    .company-card {
+      border: 1px solid var(--success-border);
+      border-radius: 8px;
+      padding: 0.875rem 1rem;
+      background: var(--success-bg);
+      margin-top: 0.75rem;
+    }
+    .company-name { font-weight: 700; font-size: 0.95rem; color: var(--success); margin-bottom: 0.35rem; }
+    .company-meta { font-size: 0.82rem; color: var(--text-secondary); display: flex; gap: 1.25rem; flex-wrap: wrap; }
+
+    /* ── Route actions ── */
+    .actions-list {
+      margin: 0.35rem 0 0 1.1rem;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    /* ── JSON block ── */
+    .json-section { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 0.875rem; }
+    .json-toggle-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 0.79rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0;
+      margin-bottom: 0.6rem;
+      font-family: inherit;
+    }
+    .json-toggle-btn:hover { color: var(--text-secondary); }
+    pre.json-pre {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-size: 0.76rem;
+      overflow: auto;
+      max-height: 260px;
+      line-height: 1.5;
+      display: none;
+      color: #334155;
+    }
+    pre.json-pre.show { display: block; }
+
+    /* ── Summary / Email ── */
+    .summary-card {
+      display: none;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--success-border);
+      background: var(--success-bg);
+      padding: 1.5rem;
+      margin-top: 0.5rem;
+      box-shadow: var(--shadow);
+    }
+    .summary-card.show { display: block; }
+    .summary-title {
+      font-weight: 700;
+      font-size: 0.97rem;
+      color: var(--success);
+      margin-bottom: 0.35rem;
+    }
+    .summary-sub { font-size: 0.84rem; color: #065F46; margin-bottom: 1rem; }
+    .email-row { display: flex; gap: 0.65rem; flex-wrap: wrap; align-items: center; }
+    .email-input {
+      flex: 1;
+      min-width: 220px;
+      padding: 0.58rem 0.875rem;
+      border: 1px solid var(--success-border);
+      border-radius: 8px;
+      font-size: 0.88rem;
+      background: #fff;
+      color: var(--text);
+      outline: none;
+      font-family: inherit;
+    }
+    .email-input:focus { border-color: var(--success); box-shadow: 0 0 0 3px rgba(5,150,105,0.12); }
+
+    /* ── Notice cards ── */
+    .notice {
+      display: none;
+      border-radius: var(--radius-lg);
+      padding: 1.1rem 1.35rem;
+      margin-top: 0.5rem;
+      box-shadow: var(--shadow);
+    }
+    .notice.show { display: block; }
+    .notice-review { border: 1px solid var(--warning-border); background: var(--warning-bg); }
+    .notice-error { border: 1px solid var(--error-border); background: var(--error-bg); }
+    .notice-title { font-weight: 700; font-size: 0.93rem; margin-bottom: 0.3rem; }
+    .notice-review .notice-title { color: var(--warning); }
+    .notice-error .notice-title { color: var(--error); }
+    .notice-text { font-size: 0.85rem; }
+    .notice-review .notice-text { color: #92400E; }
+    .notice-error .notice-text { color: #7F1D1D; }
+
+    /* ── Responsive ── */
+    @media (max-width: 580px) {
+      .stepper { padding: 1rem 0.5rem; }
+      .step-label { font-size: 0.62rem; }
+      .info-grid { grid-template-columns: 1fr 1fr; }
+      .email-row { flex-direction: column; align-items: stretch; }
+      .page-title { font-size: 1.2rem; }
     }
   </style>
 </head>
 <body>
-  <main>
-    <h1>Конвейер документов: от Intake до Email</h1>
-    <p class="lead">Загрузите <strong>PDF</strong> или изображение — ниже появятся Intake, Extract, Match, Route и Template. После этого можно ввести email и отправить подготовленный документ.</p>
 
-    <div class="drop" id="drop" tabindex="0">
-      <strong>Перетащите файл сюда</strong>
-      <span>или нажмите «Выбрать файл» — PDF, JPG, PNG</span>
-      <div class="actions">
-        <button type="button" id="pick">Выбрать файл</button>
-        <span class="file-name" id="fileName"></span>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-logo" href="/">
+        <div class="nav-logo-icon">⚡</div>
+        DocFlow
+      </a>
+      <span class="nav-divider">/</span>
+      <span class="nav-sub">Document Processing Pipeline</span>
+      <button class="theme-btn" id="themeBtn" title="Toggle dark/light mode">🌙</button>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <div class="page-header">
+      <h1 class="page-title">Document Processing Pipeline</h1>
+      <p class="page-subtitle">Upload a PDF or image — the system will extract entities, match the counterparty in the CRM, route the document, and prepare it for delivery.</p>
+    </div>
+
+    <!-- Upload card -->
+    <div class="card upload-card">
+      <div class="upload-zone" id="drop">
+        <span class="upload-icon">📄</span>
+        <div class="upload-title">Drop your document here</div>
+        <div class="upload-hint">Supports PDF, DOCX, PNG, JPG, JPEG &nbsp;·&nbsp; Max 25 MB</div>
+        <div class="upload-error" id="uploadError"></div>
+        <input type="file" id="file" accept=".pdf,.docx,.png,.jpg,.jpeg,image/*" />
       </div>
-      <input type="file" id="file" accept=".pdf,.png,.jpg,.jpeg,image/*" />
+      <div class="upload-footer">
+        <div class="file-chip" id="fileChip">
+          <span>📎</span>
+          <span class="file-chip-name" id="fileChipName"></span>
+        </div>
+        <button class="btn btn-secondary" type="button" id="pick">Choose file</button>
+        <button class="btn btn-primary" type="button" id="send" disabled>
+          ▶&nbsp; Process document
+        </button>
+      </div>
     </div>
 
-    <div class="actions">
-      <button type="button" id="send" disabled>Отправить на обработку</button>
+    <!-- Stepper -->
+    <div class="card stepper" id="stepper">
+      <div class="step" id="stepIntake" data-step="1">
+        <div class="step-dot">1</div>
+        <div class="step-label">Intake</div>
+      </div>
+      <div class="step" id="stepExtract" data-step="2">
+        <div class="step-dot">2</div>
+        <div class="step-label">Extract</div>
+      </div>
+      <div class="step" id="stepMatch" data-step="3">
+        <div class="step-dot">3</div>
+        <div class="step-label">CRM Match</div>
+      </div>
+      <div class="step" id="stepRoute" data-step="4">
+        <div class="step-dot">4</div>
+        <div class="step-label">Route</div>
+      </div>
+      <div class="step" id="stepTemplate" data-step="5">
+        <div class="step-dot">5</div>
+        <div class="step-label">Template</div>
+      </div>
     </div>
-    <div class="status" id="status"></div>
-    <h2 class="out-label" id="labelIntake" hidden>Intake</h2>
-    <pre id="out" hidden></pre>
-    <h2 class="out-label" id="labelExtract" hidden>Extract</h2>
-    <pre id="outExtract" hidden></pre>
-    <h2 class="out-label" id="labelMatch" hidden>Match</h2>
-    <pre id="outMatch" hidden></pre>
-    <h2 class="out-label" id="labelRoute" hidden>Route</h2>
-    <pre id="outRoute" hidden></pre>
-    <h2 class="out-label" id="labelTemplate" hidden>Template</h2>
-    <pre id="outTemplate" hidden></pre>
-    <div class="actions">
-      <input type="email" id="recipientEmail" placeholder="recipient@example.com" style="padding:0.55rem 0.7rem;border-radius:8px;border:1px solid var(--border);background:#0c1018;color:var(--text);min-width:260px;">
-      <button type="button" id="sendEmail" disabled>Отправить документ на email</button>
+
+    <!-- Processing bar -->
+    <div class="processing-bar" id="processingBar">
+      <div class="spinner"></div>
+      <div class="processing-text" id="processingText">Uploading document…</div>
     </div>
+
+    <!-- Result cards -->
+    <div class="results" id="results">
+
+      <!-- 1. Intake -->
+      <div class="result-card" id="cardIntake">
+        <div class="result-header" onclick="toggleCard('cardIntake')">
+          <div class="step-circle">1</div>
+          <div class="result-title">Intake</div>
+          <span class="badge badge-neutral" id="badgeIntake">Pending</span>
+          <span class="chevron">▾</span>
+        </div>
+        <div class="result-body">
+          <div class="info-grid" id="gridIntake"></div>
+          <div class="json-section">
+            <button class="json-toggle-btn" onclick="toggleJson(this, 'jsonIntake')">⌗ View raw JSON</button>
+            <pre class="json-pre" id="jsonIntake"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Extract -->
+      <div class="result-card" id="cardExtract">
+        <div class="result-header" onclick="toggleCard('cardExtract')">
+          <div class="step-circle">2</div>
+          <div class="result-title">Entity Extraction</div>
+          <span class="badge badge-neutral" id="badgeExtract">Pending</span>
+          <span class="chevron">▾</span>
+        </div>
+        <div class="result-body">
+          <div class="info-grid" id="gridExtract"></div>
+          <div id="entitiesSection"></div>
+          <div class="json-section">
+            <button class="json-toggle-btn" onclick="toggleJson(this, 'jsonExtract')">⌗ View raw JSON</button>
+            <pre class="json-pre" id="jsonExtract"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Match -->
+      <div class="result-card" id="cardMatch">
+        <div class="result-header" onclick="toggleCard('cardMatch')">
+          <div class="step-circle">3</div>
+          <div class="result-title">CRM Match</div>
+          <span class="badge badge-neutral" id="badgeMatch">Pending</span>
+          <span class="chevron">▾</span>
+        </div>
+        <div class="result-body">
+          <div class="info-grid" id="gridMatch"></div>
+          <div id="matchSection"></div>
+          <div class="json-section">
+            <button class="json-toggle-btn" onclick="toggleJson(this, 'jsonMatch')">⌗ View raw JSON</button>
+            <pre class="json-pre" id="jsonMatch"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Route -->
+      <div class="result-card" id="cardRoute">
+        <div class="result-header" onclick="toggleCard('cardRoute')">
+          <div class="step-circle">4</div>
+          <div class="result-title">Routing Decision</div>
+          <span class="badge badge-neutral" id="badgeRoute">Pending</span>
+          <span class="chevron">▾</span>
+        </div>
+        <div class="result-body">
+          <div class="info-grid" id="gridRoute"></div>
+          <div id="routeSection"></div>
+          <div class="json-section">
+            <button class="json-toggle-btn" onclick="toggleJson(this, 'jsonRoute')">⌗ View raw JSON</button>
+            <pre class="json-pre" id="jsonRoute"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Template -->
+      <div class="result-card" id="cardTemplate">
+        <div class="result-header" onclick="toggleCard('cardTemplate')">
+          <div class="step-circle">5</div>
+          <div class="result-title">Document Template</div>
+          <span class="badge badge-neutral" id="badgeTemplate">Pending</span>
+          <span class="chevron">▾</span>
+        </div>
+        <div class="result-body">
+          <div class="info-grid" id="gridTemplate"></div>
+          <div class="json-section">
+            <button class="json-toggle-btn" onclick="toggleJson(this, 'jsonTemplate')">⌗ View raw JSON</button>
+            <pre class="json-pre" id="jsonTemplate"></pre>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Success + email delivery -->
+    <div class="summary-card" id="summaryCard">
+      <div class="summary-title">✅ Pipeline complete — document is ready for delivery</div>
+      <div class="summary-sub">The document has been processed and a prepared template is available. Enter a recipient email address to send it.</div>
+      <div class="email-row">
+        <input type="email" class="email-input" id="recipientEmail" placeholder="recipient@company.com" />
+        <button class="btn btn-success" id="sendEmail" disabled>📧&nbsp; Send document</button>
+        <button class="btn btn-secondary" id="resetBtn">↺&nbsp; New document</button>
+      </div>
+    </div>
+
+    <!-- Review required -->
+    <div class="notice notice-review" id="noticeReview">
+      <div class="notice-title">⚠️ Manual review required</div>
+      <div class="notice-text" id="noticeReviewText">The document has been forwarded to a review queue.</div>
+    </div>
+
+    <!-- Error notice -->
+    <div class="notice notice-error" id="noticeError">
+      <div class="notice-title">⚠️ Processing stopped</div>
+      <div class="notice-text" id="noticeErrorText"></div>
+    </div>
+
   </main>
 
   <script>
-    const drop = document.getElementById("drop");
-    const fileInput = document.getElementById("file");
-    const pick = document.getElementById("pick");
-    const send = document.getElementById("send");
-    const fileName = document.getElementById("fileName");
-    const statusEl = document.getElementById("status");
-    const out = document.getElementById("out");
-    const outExtract = document.getElementById("outExtract");
-    const outMatch = document.getElementById("outMatch");
-    const outRoute = document.getElementById("outRoute");
-    const outTemplate = document.getElementById("outTemplate");
-    const labelIntake = document.getElementById("labelIntake");
-    const labelExtract = document.getElementById("labelExtract");
-    const labelMatch = document.getElementById("labelMatch");
-    const labelRoute = document.getElementById("labelRoute");
-    const labelTemplate = document.getElementById("labelTemplate");
-    const recipientEmail = document.getElementById("recipientEmail");
-    const sendEmail = document.getElementById("sendEmail");
+    // ── Utilities ──────────────────────────────────────────────────────────────
+    const $ = id => document.getElementById(id);
 
-    let selected = null;
-    let lastJobId = null;
-    let templateReady = false;
+    function apiUrl(path) { return window.location.origin + path; }
 
-    function apiUrl(path) {
-      return window.location.origin + path;
+    async function parseJson(res) {
+      const text = await res.text();
+      if (!text) return {};
+      try { return JSON.parse(text); }
+      catch { return { _parse_error: true, _raw: text.slice(0, 200) }; }
     }
 
-    async function parseJsonSafe(response) {
-      const raw = await response.text();
-      if (!raw) return {};
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return { _parse_error: true, _raw: raw.slice(0, 500) };
+    function show(id) { $(id).classList.add("show"); }
+    function hide(id) { $(id).classList.remove("show"); }
+
+    function setStep(id, state) {
+      const el = $(id);
+      if (!el) return;
+      el.className = "step" + (state ? " " + state : "");
+      const dot = el.querySelector(".step-dot");
+      const n = el.dataset.step;
+      dot.textContent = state === "completed" ? "✓" : state === "error" ? "✗" : state === "warning" ? "!" : n;
+    }
+
+    function badge(id, text, type) {
+      const el = $(id);
+      el.textContent = text;
+      el.className = "badge badge-" + type;
+    }
+
+    function showCard(id) {
+      const c = $(id);
+      c.classList.add("show", "expanded");
+    }
+
+    function toggleCard(id) { $(id).classList.toggle("expanded"); }
+
+    function toggleJson(btn, preId) {
+      const pre = $(preId);
+      pre.classList.toggle("show");
+      btn.textContent = pre.classList.contains("show") ? "⌗ Hide raw JSON" : "⌗ View raw JSON";
+    }
+
+    function infoItem(label, value) {
+      return `<div class="info-item"><div class="info-label">${label}</div><div class="info-value">${value ?? "—"}</div></div>`;
+    }
+
+    function tags(list, empty = "None found") {
+      if (!list || !list.length) return `<span class="tag-empty">${empty}</span>`;
+      return list.map(t => `<span class="tag">${t}</span>`).join(" ");
+    }
+
+    // ── State ──────────────────────────────────────────────────────────────────
+    let selected = null, lastJobId = null, templateReady = false;
+
+    function reset() {
+      lastJobId = null; templateReady = false;
+      $("stepper").classList.remove("show");
+      hide("processingBar");
+      ["cardIntake","cardExtract","cardMatch","cardRoute","cardTemplate"]
+        .forEach(id => $(id).classList.remove("show","expanded"));
+      hide("summaryCard"); hide("noticeReview"); hide("noticeError");
+      $("sendEmail").disabled = true;
+      $("sendEmail").textContent = "📧  Send document";
+      $("sendEmail").className = "btn btn-success";
+      $("recipientEmail").value = "";
+      ["stepIntake","stepExtract","stepMatch","stepRoute","stepTemplate"]
+        .forEach(id => setStep(id, null));
+    }
+
+    // ── File selection ─────────────────────────────────────────────────────────
+    const drop = $("drop");
+    const fileInput = $("file");
+
+    $("pick").addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => { const f = fileInput.files?.[0]; if (f) pick(f); });
+
+    ["dragenter","dragover"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add("dragover"); }));
+    ["dragleave","drop"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove("dragover"); }));
+    drop.addEventListener("drop", ev => { const f = ev.dataTransfer?.files?.[0]; if (f) pick(f); });
+
+    const ALLOWED_EXT = [".pdf", ".docx", ".png", ".jpg", ".jpeg"];
+
+    function pick(file) {
+      const errEl = $("uploadError");
+      const ext = "." + file.name.split(".").pop().toLowerCase();
+      if (!ALLOWED_EXT.includes(ext)) {
+        errEl.textContent = `❌ Unsupported file type: .${file.name.split(".").pop().toUpperCase()} — please upload a PDF, PNG, JPG or JPEG.`;
+        errEl.classList.add("show");
+        $("send").disabled = true;
+        selected = null;
+        fileInput.value = "";
+        return;
       }
-    }
-
-    function setSelected(file) {
+      errEl.classList.remove("show");
       selected = file;
-      fileName.textContent = file ? file.name : "";
-      send.disabled = !file;
-      out.hidden = true;
-      outExtract.hidden = true;
-      outMatch.hidden = true;
-      outRoute.hidden = true;
-      outTemplate.hidden = true;
-      labelIntake.hidden = true;
-      labelExtract.hidden = true;
-      labelMatch.hidden = true;
-      labelRoute.hidden = true;
-      labelTemplate.hidden = true;
-      statusEl.textContent = "";
-      statusEl.className = "status";
-      lastJobId = null;
-      templateReady = false;
-      sendEmail.disabled = true;
+      const kb = (file.size / 1024).toFixed(0);
+      $("fileChipName").textContent = `${file.name}  (${kb} KB)`;
+      $("fileChip").classList.add("show");
+      $("send").disabled = false;
+      reset();
     }
 
-    pick.addEventListener("click", () => fileInput.click());
-    fileInput.addEventListener("change", () => {
-      const f = fileInput.files && fileInput.files[0];
-      setSelected(f || null);
+    $("resetBtn").addEventListener("click", () => {
+      selected = null;
+      $("fileChip").classList.remove("show");
+      $("send").disabled = true;
+      fileInput.value = "";
+      reset();
     });
 
-    ["dragenter", "dragover"].forEach((ev) => {
-      drop.addEventListener(ev, (e) => {
-        e.preventDefault();
-        drop.classList.add("dragover");
-      });
-    });
-    ["dragleave", "drop"].forEach((ev) => {
-      drop.addEventListener(ev, (e) => {
-        e.preventDefault();
-        drop.classList.remove("dragover");
-      });
-    });
-    drop.addEventListener("drop", (e) => {
-      const f = e.dataTransfer.files && e.dataTransfer.files[0];
-      setSelected(f || null);
-    });
-
-    send.addEventListener("click", async () => {
+    // ── Pipeline ───────────────────────────────────────────────────────────────
+    $("send").addEventListener("click", async () => {
       if (!selected) return;
-      send.disabled = true;
-      statusEl.textContent = "Отправка…";
-      statusEl.className = "status";
-      out.hidden = true;
-      outExtract.hidden = true;
-      outMatch.hidden = true;
-      outRoute.hidden = true;
-      outTemplate.hidden = true;
-      labelIntake.hidden = true;
-      labelExtract.hidden = true;
-      labelMatch.hidden = true;
-      labelRoute.hidden = true;
-      labelTemplate.hidden = true;
-      sendEmail.disabled = true;
+      $("send").disabled = true;
+      reset();
+      $("stepper").classList.add("show");
+      show("processingBar");
+      $("processingText").textContent = "Uploading and running intake…";
+      setStep("stepIntake", "active");
 
       const fd = new FormData();
       fd.append("file", selected, selected.name);
 
+      let intake, extract, match, route, template;
+
       try {
+        // ── Step 1 + 2: Intake + Extract ──
         const res = await fetch(apiUrl("/api/intake"), { method: "POST", body: fd });
-        const data = await parseJsonSafe(res);
-        const intake = data.intake != null ? data.intake : data;
-        let extract = Object.prototype.hasOwnProperty.call(data, "extract")
-          ? data.extract
-          : undefined;
-        let match = undefined;
-        let route = undefined;
-        let template = undefined;
-        // Плоский JSON Intake (старый воркер uvicorn) или ответ без ключа extract: добираем Extract по job_id.
-        if (intake.status === "accepted" && intake.job_id && extract == null) {
+        const data = await parseJson(res);
+        intake = data.intake ?? data;
+        extract = ("extract" in data) ? data.extract : undefined;
+
+        renderIntake(intake);
+
+        if (intake?.status !== "accepted") {
+          setStep("stepIntake", "error");
+          hide("processingBar");
+          show("noticeError");
+          $("noticeErrorText").textContent = "File rejected: " + (intake?.rejection_reason || "unknown reason.");
+          $("send").disabled = false;
+          return;
+        }
+        setStep("stepIntake", "completed");
+
+        // Fallback: fetch extract separately if not bundled
+        if (intake.job_id && extract == null) {
           try {
             const er = await fetch(apiUrl("/api/extract"), {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
+              method: "POST", headers: {"Content-Type":"application/json"},
               body: JSON.stringify({ job_id: intake.job_id }),
             });
             if (er.ok) extract = await er.json();
-          } catch (_) {
-            /* оставляем extract пустым */
-          }
+          } catch {}
         }
-        if (intake.status === "accepted" && intake.job_id && extract && extract.status === "ok") {
-          try {
-            const mr = await fetch(apiUrl("/api/match"), {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ job_id: intake.job_id }),
-            });
-            if (mr.ok) match = await mr.json();
-          } catch (_) {
-            /* оставляем match пустым */
-          }
+
+        $("processingText").textContent = "Extracting entities from document…";
+        setStep("stepExtract", "active");
+        renderExtract(extract);
+
+        if (!extract || extract.status !== "ok") {
+          const ocr = extract?.status === "skipped_ocr";
+          setStep("stepExtract", ocr ? "warning" : "error");
+          hide("processingBar");
+          show("noticeError");
+          $("noticeErrorText").textContent = ocr
+            ? "Document appears to be a scanned image. OCR is not enabled — text extraction was skipped."
+            : "Text extraction failed: " + (extract?.rejection_reason || "unknown");
+          $("send").disabled = false;
+          return;
         }
-        if (
-          intake.status === "accepted" &&
-          intake.job_id &&
-          match &&
-          (match.status === "ok" || match.status === "no_match" || match.status === "skipped")
-        ) {
-          try {
-            const rr = await fetch(apiUrl("/api/route"), {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ job_id: intake.job_id }),
-            });
-            if (rr.ok) route = await rr.json();
-          } catch (_) {
-            /* оставляем route пустым */
-          }
-        }
-        if (
-          intake.status === "accepted" &&
-          intake.job_id &&
-          route &&
-          route.status === "ready_for_template"
-        ) {
+        setStep("stepExtract", "completed");
+
+        // ── Step 3: Match ──
+        $("processingText").textContent = "Searching CRM database…";
+        setStep("stepMatch", "active");
+        try {
+          const mr = await fetch(apiUrl("/api/match"), {
+            method: "POST", headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({ job_id: intake.job_id }),
+          });
+          if (mr.ok) match = await mr.json();
+        } catch {}
+        renderMatch(match);
+        const matchOk = match?.status === "ok";
+        setStep("stepMatch", matchOk ? "completed" : (match?.status === "no_match" ? "warning" : "error"));
+
+        // ── Step 4: Route ──
+        $("processingText").textContent = "Determining routing decision…";
+        setStep("stepRoute", "active");
+        try {
+          const rr = await fetch(apiUrl("/api/route"), {
+            method: "POST", headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({ job_id: intake.job_id }),
+          });
+          if (rr.ok) route = await rr.json();
+        } catch {}
+        renderRoute(route);
+
+        if (route?.status === "ready_for_template") {
+          setStep("stepRoute", "completed");
+
+          // ── Step 5: Template ──
+          $("processingText").textContent = "Generating document template…";
+          setStep("stepTemplate", "active");
           try {
             const tr = await fetch(apiUrl("/api/template"), {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
+              method: "POST", headers: {"Content-Type":"application/json"},
               body: JSON.stringify({ job_id: intake.job_id }),
             });
             if (tr.ok) template = await tr.json();
-          } catch (_) {
-            /* оставляем template пустым */
-          }
-        }
-        labelIntake.hidden = false;
-        out.textContent = JSON.stringify(intake, null, 2);
-        out.hidden = false;
-        if (intake.status === "accepted") {
-          if (!intake.job_id) {
-            statusEl.textContent = "Intake без job_id.";
-            statusEl.className = "status err";
-            return;
-          }
-          labelExtract.hidden = false;
-          outExtract.textContent = JSON.stringify(extract ?? null, null, 2);
-          outExtract.hidden = false;
-          if (extract == null) {
-            statusEl.textContent = "Intake ок; Extract не вернул данные (проверьте intake.json).";
-            statusEl.className = "status err";
-          } else if (extract.status === "ok") {
-            labelMatch.hidden = false;
-            outMatch.textContent = JSON.stringify(match ?? null, null, 2);
-            outMatch.hidden = false;
-            if (match == null) {
-              statusEl.textContent = "Intake + Extract ок; Match не вернул данные.";
-              statusEl.className = "status err";
-            } else if (match.status === "ok") {
-              labelRoute.hidden = false;
-              outRoute.textContent = JSON.stringify(route ?? null, null, 2);
-              outRoute.hidden = false;
-              if (route == null) {
-                statusEl.textContent = "Intake + Extract + Match ок; Route не вернул данные.";
-                statusEl.className = "status err";
-              } else if (route.status === "ready_for_template") {
-                labelTemplate.hidden = false;
-                outTemplate.textContent = JSON.stringify(template ?? null, null, 2);
-                outTemplate.hidden = false;
-                lastJobId = intake.job_id;
-                templateReady = template && template.status === "ready";
-                sendEmail.disabled = !templateReady;
-                if (!template) {
-                  statusEl.textContent = "Route готов, но Template не вернул данные.";
-                  statusEl.className = "status err";
-                } else if (template.status === "ready") {
-                  statusEl.textContent = "Готово: Intake + Extract + Match + Route + Template.";
-                  statusEl.className = "status ok";
-                } else {
-                  statusEl.textContent = "Template: " + (template.status || "");
-                  statusEl.className = "status err";
-                }
-              } else if (route.status === "review_required") {
-                statusEl.textContent = "Route: требуется ручная проверка (" + (route.queue || "queue") + ").";
-                statusEl.className = "status ok";
-              } else if (route.status === "rejected") {
-                statusEl.textContent = "Route: документ отклонён.";
-                statusEl.className = "status err";
-              } else if (route.status === "failed") {
-                statusEl.textContent = "Route failed: " + (route.rejection_reason || "");
-                statusEl.className = "status err";
-              } else {
-                statusEl.textContent = "Route: " + (route.status || "");
-                statusEl.className = "status err";
-              }
-            } else if (match.status === "no_match") {
-              labelRoute.hidden = false;
-              outRoute.textContent = JSON.stringify(route ?? null, null, 2);
-              outRoute.hidden = false;
-              if (route && route.status === "review_required") {
-                statusEl.textContent = "Match: no_match; Route отправил в ручную CRM-проверку.";
-                statusEl.className = "status ok";
-              } else {
-                statusEl.textContent = "Intake + Extract ок; Match: совпадений по ИНН не найдено.";
-                statusEl.className = "status ok";
-              }
-            } else if (match.status === "skipped") {
-              labelRoute.hidden = false;
-              outRoute.textContent = JSON.stringify(route ?? null, null, 2);
-              outRoute.hidden = false;
-              statusEl.textContent = "Intake + Extract ок; Match пропущен: " + (match.rejection_reason || "");
-              statusEl.className = "status err";
-            } else if (match.status === "failed") {
-              statusEl.textContent = "Intake + Extract ок; Match failed: " + (match.rejection_reason || "");
-              statusEl.className = "status err";
-            } else {
-              statusEl.textContent = "Intake + Extract ок; Match: " + (match.status || "");
-              statusEl.className = "status err";
-            }
-          } else if (extract.status === "skipped_ocr") {
-            statusEl.textContent = "Intake ок; Extract пропущен (нет текста или растр — нужен OCR).";
-            statusEl.className = "status ok";
-          } else if (extract.status === "failed") {
-            statusEl.textContent = "Intake ок; Extract failed: " + (extract.rejection_reason || "");
-            statusEl.className = "status err";
+          } catch {}
+          renderTemplate(template);
+
+          if (template?.status === "ready") {
+            setStep("stepTemplate", "completed");
+            lastJobId = intake.job_id;
+            templateReady = true;
+            $("sendEmail").disabled = !$("recipientEmail").value.includes("@");
+            show("summaryCard");
           } else {
-            statusEl.textContent = "Intake ок; Extract: " + (extract.status || "");
-            statusEl.className = "status err";
+            setStep("stepTemplate", "error");
+            show("noticeError");
+            $("noticeErrorText").textContent = "Template generation failed: " + (template?.rejection_reason || "unknown");
           }
+
+        } else if (route?.status === "review_required") {
+          setStep("stepRoute", "warning");
+          setStep("stepTemplate", null);
+          show("noticeReview");
+          const queueMap = {
+            crm_enrichment: "INN was not matched to any company in the CRM. A specialist should add or update the counterparty record.",
+            ocr_review: "The document requires OCR processing before it can be routed.",
+            doc_control: "Sent to document control for manual review.",
+          };
+          $("noticeReviewText").textContent = queueMap[route.queue] || `Routed to queue: ${route.queue}`;
+
         } else {
-          statusEl.textContent = "Отклонено: " + (intake.rejection_reason || "неизвестно");
-          statusEl.className = "status err";
+          setStep("stepRoute", "error");
+          show("noticeError");
+          $("noticeErrorText").textContent = "Routing failed or document was rejected. Reason: " + (route?.rejection_reason || "unknown");
         }
+
       } catch (err) {
-        statusEl.textContent = "Ошибка сети или сервера";
-        statusEl.className = "status err";
-        out.textContent = String(err);
-        labelIntake.hidden = false;
-        out.hidden = false;
+        show("noticeError");
+        $("noticeErrorText").textContent = "Network or server error: " + String(err);
       } finally {
-        send.disabled = !selected;
+        hide("processingBar");
+        $("send").disabled = false;
       }
     });
 
-    sendEmail.addEventListener("click", async () => {
-      if (!templateReady || !lastJobId) return;
-      const email = (recipientEmail.value || "").trim();
-      if (!email) {
-        statusEl.textContent = "Укажите email получателя.";
-        statusEl.className = "status err";
-        return;
+    // ── Render helpers ─────────────────────────────────────────────────────────
+    function renderIntake(d) {
+      if (!d) return;
+      showCard("cardIntake");
+      const ok = d.status === "accepted";
+      badge("badgeIntake", ok ? "Accepted" : "Rejected", ok ? "success" : "error");
+      const kindMap = { invoice:"Invoice", contract:"Contract", other:"Other", unknown:"Unknown" };
+      $("gridIntake").innerHTML =
+        infoItem("Status", ok ? "✅ Accepted" : "❌ Rejected") +
+        infoItem("Document type", kindMap[d.document_kind] || d.document_kind || "—") +
+        infoItem("Confidence", d.kind_confidence != null ? Math.round(d.kind_confidence * 100) + "%" : "—") +
+        infoItem("Pages", d.page_count ?? "—") +
+        infoItem("Needs OCR", d.needs_ocr ? "Yes" : "No") +
+        infoItem("Job ID", `<span style="font:0.75rem/1 'Courier New',monospace">${d.job_id ?? "—"}</span>`);
+      $("jsonIntake").textContent = JSON.stringify(d, null, 2);
+    }
+
+    function renderExtract(d) {
+      if (!d) return;
+      showCard("cardExtract");
+      const ok = d.status === "ok", skip = d.status === "skipped_ocr";
+      badge("badgeExtract", ok ? "Extracted" : skip ? "OCR needed" : "Failed", ok ? "success" : skip ? "warning" : "error");
+      const e = d.entities || {};
+      $("gridExtract").innerHTML =
+        infoItem("Status", ok ? "✅ Extracted" : skip ? "⚠️ Skipped" : "❌ Failed") +
+        infoItem("Characters", d.text_char_count?.toLocaleString() ?? "—") +
+        infoItem("INN candidates", (e.inn_candidates||[]).length) +
+        infoItem("Dates found", (e.date_candidates||[]).length) +
+        infoItem("Amounts found", (e.money_candidates||[]).length);
+      if (ok && d.entities) {
+        $("entitiesSection").innerHTML = `
+          <div class="section-label">INN candidates</div>
+          <div class="tag-row">${tags(e.inn_candidates, "No INN found")}</div>
+          <div class="section-label">Dates</div>
+          <div class="tag-row">${tags(e.date_candidates, "No dates found")}</div>
+          <div class="section-label">Monetary amounts</div>
+          <div class="tag-row">${tags(e.money_candidates, "No amounts found")}</div>`;
+      } else {
+        $("entitiesSection").innerHTML = "";
       }
-      sendEmail.disabled = true;
+      $("jsonExtract").textContent = JSON.stringify(d, null, 2);
+    }
+
+    function renderMatch(d) {
+      if (!d) return;
+      showCard("cardMatch");
+      const ok = d.status === "ok", nm = d.status === "no_match";
+      badge("badgeMatch", ok ? "Matched" : nm ? "No match" : "Skipped", ok ? "success" : nm ? "warning" : "neutral");
+      const matches = d.matches || [];
+      $("gridMatch").innerHTML =
+        infoItem("Status", ok ? "✅ Match found" : nm ? "⚠️ No match" : "— Skipped") +
+        infoItem("INNs checked", (d.checked_inn||[]).length) +
+        infoItem("Companies found", matches.length);
+      $("matchSection").innerHTML = matches.map(m => `
+        <div class="company-card">
+          <div class="company-name">${m.company_name}</div>
+          <div class="company-meta">
+            <span>INN: <strong>${m.inn}</strong></span>
+            <span>Manager: <strong>${m.account_manager || "—"}</strong></span>
+            <span>Segment: <strong>${m.segment || "—"}</strong></span>
+          </div>
+        </div>`).join("");
+      $("jsonMatch").textContent = JSON.stringify(d, null, 2);
+    }
+
+    function renderRoute(d) {
+      if (!d) return;
+      showCard("cardRoute");
+      const statusMap = {
+        ready_for_template: ["Ready for template","success"],
+        review_required:    ["Review required","warning"],
+        rejected:           ["Rejected","error"],
+        failed:             ["Failed","error"],
+      };
+      const [lbl, type] = statusMap[d.status] || [d.status, "neutral"];
+      badge("badgeRoute", lbl, type);
+      const queueMap = {
+        templating:     "Templating queue",
+        crm_enrichment: "CRM enrichment",
+        ocr_review:     "OCR review",
+        doc_control:    "Document control",
+      };
+      $("gridRoute").innerHTML =
+        infoItem("Decision", lbl) +
+        infoItem("Queue", queueMap[d.queue] || d.queue || "—") +
+        infoItem("Priority", d.priority || "—");
+      const reasons = d.reasons || [], actions = d.next_actions || [];
+      $("routeSection").innerHTML = (reasons.length || actions.length) ? `
+        ${reasons.length ? `<div class="section-label">Reasons</div>
+          <ul class="actions-list">${reasons.map(r=>`<li>${r}</li>`).join("")}</ul>` : ""}
+        ${actions.length ? `<div class="section-label" style="margin-top:0.75rem">Next actions</div>
+          <ul class="actions-list">${actions.map(a=>`<li>${a}</li>`).join("")}</ul>` : ""}` : "";
+      $("jsonRoute").textContent = JSON.stringify(d, null, 2);
+    }
+
+    function renderTemplate(d) {
+      if (!d) return;
+      showCard("cardTemplate");
+      const ok = d.status === "ready";
+      badge("badgeTemplate", ok ? "Ready" : "Skipped", ok ? "success" : "neutral");
+      $("gridTemplate").innerHTML =
+        infoItem("Status", ok ? "✅ Document prepared" : "— Skipped") +
+        infoItem("Output file", d.template_path ? d.template_path.split(/[/\\]/).pop() : "—");
+      $("jsonTemplate").textContent = JSON.stringify(d, null, 2);
+    }
+
+    // ── Theme toggle ───────────────────────────────────────────────────────────
+    (function () {
+      const btn = $("themeBtn");
+      const saved = localStorage.getItem("docflow-theme");
+      if (saved === "dark") {
+        document.documentElement.setAttribute("data-theme", "dark");
+        btn.textContent = "☀️";
+      }
+      btn.addEventListener("click", () => {
+        const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+        if (isDark) {
+          document.documentElement.removeAttribute("data-theme");
+          btn.textContent = "🌙";
+          localStorage.setItem("docflow-theme", "light");
+        } else {
+          document.documentElement.setAttribute("data-theme", "dark");
+          btn.textContent = "☀️";
+          localStorage.setItem("docflow-theme", "dark");
+        }
+      });
+    })();
+
+    // ── Email send ─────────────────────────────────────────────────────────────
+    $("recipientEmail").addEventListener("input", function () {
+      $("sendEmail").disabled = !templateReady || !this.value.includes("@");
+    });
+
+    $("sendEmail").addEventListener("click", async () => {
+      if (!templateReady || !lastJobId) return;
+      const email = $("recipientEmail").value.trim();
+      if (!email.includes("@")) return;
+      $("sendEmail").disabled = true;
+      $("sendEmail").innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .65s linear infinite;vertical-align:middle"></span>&nbsp; Sending…';
       try {
         const resp = await fetch(apiUrl("/api/send-template"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: "POST", headers: {"Content-Type":"application/json"},
           body: JSON.stringify({ job_id: lastJobId, recipient_email: email }),
         });
-        const data = await parseJsonSafe(resp);
+        const data = await parseJson(resp);
         if (resp.ok) {
-          statusEl.textContent = "Документ отправлен на email: " + email;
-          statusEl.className = "status ok";
+          $("sendEmail").textContent = "✅ Sent!";
+          $("sendEmail").className = "btn btn-secondary";
         } else {
-          statusEl.textContent = "Не удалось отправить email: " + (data.detail || data.rejection_reason || "ошибка");
-          statusEl.className = "status err";
+          $("sendEmail").innerHTML = "📧  Send document";
+          $("sendEmail").disabled = false;
+          show("noticeError");
+          $("noticeErrorText").textContent = "Email delivery failed: " + (data.detail || data.rejection_reason || "SMTP error — check server configuration.");
         }
-      } catch (err) {
-        statusEl.textContent = "Ошибка отправки email";
-        statusEl.className = "status err";
-      } finally {
-        sendEmail.disabled = !templateReady;
+      } catch {
+        $("sendEmail").innerHTML = "📧  Send document";
+        $("sendEmail").disabled = false;
+        show("noticeError");
+        $("noticeErrorText").textContent = "Network error while sending email.";
       }
     });
   </script>
