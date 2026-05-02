@@ -2,6 +2,13 @@ import re
 import tempfile
 from pathlib import Path
 
+# Load .env for local dev; on Vercel env vars are set in dashboard
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
